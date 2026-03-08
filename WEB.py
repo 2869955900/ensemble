@@ -5,6 +5,7 @@ import pandas as pd
 from sklearn.base import BaseEstimator, RegressorMixin
 from io import BytesIO
 import os
+import fitz  # PyMuPDF
 
 # =========================
 # 自定义集成模型类（必须先定义，joblib.load 时会用到）
@@ -123,6 +124,47 @@ def pdf_download_button(pdf_path, button_label):
         )
     else:
         st.warning(f"未找到文件：{pdf_path}")
+
+@st.cache_data
+def pdf_first_page_to_png_bytes(pdf_path, zoom=2.0):
+    """
+    将PDF第一页转换为PNG字节流
+    zoom越大，清晰度越高
+    """
+    if not os.path.exists(pdf_path):
+        return None
+
+    doc = fitz.open(pdf_path)
+    if len(doc) == 0:
+        doc.close()
+        return None
+
+    page = doc.load_page(0)  # 只取第一页
+    mat = fitz.Matrix(zoom, zoom)
+    pix = page.get_pixmap(matrix=mat, alpha=False)
+    img_bytes = pix.tobytes("png")
+    doc.close()
+    return img_bytes
+
+def show_pdf_as_image(pdf_path, title=None, caption=None, zoom=2.0):
+    """
+    将PDF第一页转成PNG并展示
+    """
+    if title:
+        st.markdown(title)
+
+    if not os.path.exists(pdf_path):
+        st.warning(f"未找到文件：{pdf_path}")
+        return
+
+    try:
+        img_bytes = pdf_first_page_to_png_bytes(pdf_path, zoom=zoom)
+        if img_bytes is None:
+            st.warning(f"无法读取PDF内容：{pdf_path}")
+        else:
+            st.image(img_bytes, caption=caption, use_container_width=True)
+    except Exception as e:
+        st.error(f"PDF 转图片失败：{e}")
 
 # =========================
 # 三个页面
@@ -255,65 +297,59 @@ with tab2:
             st.error(f"批量预测失败：{e}")
 
 # =========================
-# 页面3：模型性能展示（图片显示）
+# 页面3：模型性能展示（PDF读取并转PNG展示）
 # =========================
 with tab3:
     st.subheader("模型性能可视化展示")
 
     st.markdown("""
     本页面展示：
-    - 单一模型性能对比图
-    - 堆叠模型性能展示图
-    - 结论说明：**堆叠模型性能更优**
+    - 单一模型性能对比 PDF 转图片预览
+    - 堆叠模型性能 PDF 转图片预览
+    - 综合结论：**堆叠模型性能更优**
     """)
 
     st.success("结论：堆叠模型综合性能优于单一模型，预测精度和稳定性更好。")
 
-    # 图片文件名
-    single_model_img = "single_model.png"
-    ensemble_model_img = "ensemble_model.png"
-
-    # PDF 文件名（可选）
     pdf_single_model = "Six_Models_RealData_Comparison.pdf"
     pdf_ensemble_model = "EnsembleModel.pdf"
 
     st.markdown("---")
     st.markdown("## 1. 单一模型性能对比")
 
-    if os.path.exists(single_model_img):
-        st.image(single_model_img, caption="单一模型性能对比图", use_container_width=True)
-    else:
-        st.warning(f"未找到图片文件：{single_model_img}")
+    show_pdf_as_image(
+        pdf_single_model,
+        caption="单一模型性能对比图（由PDF第一页转换）",
+        zoom=2.0
+    )
 
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        st.write("该图展示多个单一模型在真实数据集上的性能表现。")
-    with col2:
-        if os.path.exists(pdf_single_model):
-            pdf_download_button(pdf_single_model, "下载单一模型对比 PDF")
+    c1, c2 = st.columns([2, 1])
+    with c1:
+        st.write("该图展示多个单一模型在真实数据上的性能对比结果。")
+    with c2:
+        pdf_download_button(pdf_single_model, "下载单一模型对比 PDF")
 
     st.markdown("---")
     st.markdown("## 2. 堆叠模型性能展示")
 
-    if os.path.exists(ensemble_model_img):
-        st.image(ensemble_model_img, caption="堆叠模型性能展示图", use_container_width=True)
-    else:
-        st.warning(f"未找到图片文件：{ensemble_model_img}")
+    show_pdf_as_image(
+        pdf_ensemble_model,
+        caption="堆叠模型性能图（由PDF第一页转换）",
+        zoom=2.0
+    )
 
-    col3, col4 = st.columns([2, 1])
-    with col3:
+    c3, c4 = st.columns([2, 1])
+    with c3:
         st.write("该图展示堆叠/集成模型在测试数据上的性能表现。")
-    with col4:
-        if os.path.exists(pdf_ensemble_model):
-            pdf_download_button(pdf_ensemble_model, "下载堆叠模型 PDF")
+    with c4:
+        pdf_download_button(pdf_ensemble_model, "下载堆叠模型 PDF")
 
     st.markdown("---")
     st.markdown("## 3. 对比结论")
-
     st.info("""
     与单一模型相比，堆叠模型通过融合多个基学习器的优势，
-    能够提升预测精度，降低单模型波动带来的误差影响，
-    在鲁棒性和泛化能力方面表现更好。
+    能够提升预测精度，降低单模型误差波动，
+    因而在稳定性、鲁棒性与泛化能力方面更优。
 
     因此，本系统最终推荐使用：**堆叠模型（Ensemble / Stacking）**。
     """)
