@@ -6,21 +6,22 @@ from sklearn.base import BaseEstimator, RegressorMixin
 from io import BytesIO
 
 # =========================
-# 自定义集成模型类（必须先定义，joblib.load 时会用到）
+# Custom ensemble model class
+# Must be defined before joblib.load()
 # =========================
 class EnsembleModel(BaseEstimator, RegressorMixin):
     def __init__(self, models, weights):
         """
-        初始化集成回归模型。
+        Initialize the ensemble regression model.
 
-        :param models: 字典类型，包含每个基学习器模型
-        :param weights: 模型权重数组
+        :param models: A dictionary containing base learner models
+        :param weights: Array of model weights
         """
         self.models = models
         self.weights = np.array(weights)
 
         if len(self.models) != len(self.weights):
-            raise ValueError("模型数量与权重数量不一致！")
+            raise ValueError("The number of models does not match the number of weights!")
 
         self.model_names = list(self.models.keys())
         self.weights_dict = dict(zip(self.model_names, self.weights))
@@ -42,14 +43,14 @@ class EnsembleModel(BaseEstimator, RegressorMixin):
         return self.weights_dict
 
 # =========================
-# 页面配置
+# Page configuration
 # =========================
-st.set_page_config(page_title="在线预测器", page_icon="📈", layout="wide")
-st.title("📈 Streamlit 在线预测器")
-st.write("支持单条预测和批量文件预测（CSV / XLSX），输入数据会先标准化，再送入集成模型进行预测。")
+st.set_page_config(page_title="Online Predictor", page_icon="📈", layout="wide")
+st.title("📈 Streamlit Online Predictor")
+st.write("Supports single prediction and batch prediction (CSV / XLSX). Input data will be standardized before being fed into the ensemble model for prediction.")
 
 # =========================
-# 加载模型和标准化器
+# Load scaler and model
 # =========================
 @st.cache_resource
 def load_objects():
@@ -60,11 +61,11 @@ def load_objects():
 try:
     scaler, ensemble_model = load_objects()
 except Exception as e:
-    st.error(f"模型或标准化器加载失败：{e}")
+    st.error(f"Failed to load model or scaler: {e}")
     st.stop()
 
 # =========================
-# 特征顺序（必须与训练时一致）
+# Feature order (must match training)
 # =========================
 feature_names = [
     "infP", "infC", "infAc", "infpro", "infS",
@@ -79,34 +80,34 @@ default_values = [
 ]
 
 # =========================
-# 工具函数
+# Utility functions
 # =========================
 def predict_dataframe(df, scaler, model, feature_names):
     """
-    对DataFrame进行批量预测
-    要求df至少包含 feature_names 中的所有字段
+    Perform batch prediction on a DataFrame.
+    The DataFrame must contain all required feature columns.
     """
     missing_cols = [col for col in feature_names if col not in df.columns]
     if missing_cols:
-        raise ValueError(f"上传文件缺少以下必要列：{missing_cols}")
+        raise ValueError(f"The uploaded file is missing the following required columns: {missing_cols}")
 
-    # 按训练顺序取列
+    # Select features in training order
     X = df[feature_names].copy()
 
-    # 标准化
+    # Standardize
     X_scaled = scaler.transform(X)
 
-    # 预测
+    # Predict
     preds = model.predict(X_scaled)
 
-    # 返回包含原始特征和预测值的结果
+    # Return original features with prediction column
     result_df = df.copy()
     result_df["prediction"] = preds
     return result_df, X_scaled
 
 def dataframe_to_excel_bytes(df, sheet_name="prediction_result"):
     """
-    将DataFrame转成Excel二进制流，供下载
+    Convert a DataFrame to Excel binary stream for download
     """
     output = BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
@@ -117,13 +118,13 @@ def dataframe_to_excel_bytes(df, sheet_name="prediction_result"):
 # =========================
 # Tabs
 # =========================
-tab1, tab2 = st.tabs(["单条预测", "批量文件预测"])
+tab1, tab2 = st.tabs(["Single Prediction", "Batch File Prediction"])
 
 # =========================
-# 单条预测
+# Single prediction
 # =========================
 with tab1:
-    st.subheader("请输入单条样本特征值")
+    st.subheader("Please enter the feature values for a single sample")
 
     cols = st.columns(3)
     input_values = {}
@@ -136,107 +137,107 @@ with tab1:
                 format="%.4f"
             )
 
-    if st.button("开始单条预测", type="primary"):
+    if st.button("Start Single Prediction", type="primary"):
         try:
-            # 按固定顺序组装输入
+            # Build input in fixed feature order
             X_input = pd.DataFrame(
                 [[input_values[feat] for feat in feature_names]],
                 columns=feature_names
             )
 
-            st.write("### 原始输入数据")
+            st.write("### Original Input Data")
             st.dataframe(X_input)
 
-            # 标准化
+            # Standardize
             X_scaled = scaler.transform(X_input)
 
-            st.write("### 标准化后的数据")
+            st.write("### Standardized Data")
             st.dataframe(pd.DataFrame(X_scaled, columns=feature_names))
 
-            # 预测
+            # Predict
             prediction = ensemble_model.predict(X_scaled)
 
             result_single = X_input.copy()
             result_single["prediction"] = prediction
 
-            st.success(f"预测结果：{prediction[0]:.6f}")
+            st.success(f"Prediction Result: {prediction[0]:.6f}")
 
-            st.write("### 单条预测结果表")
+            st.write("### Single Prediction Result Table")
             st.dataframe(result_single)
 
-            # 下载单条预测Excel
+            # Download single prediction Excel
             single_excel = dataframe_to_excel_bytes(result_single, sheet_name="single_prediction")
             st.download_button(
-                label="下载单条预测结果 Excel",
+                label="Download Single Prediction Result Excel",
                 data=single_excel,
                 file_name="single_prediction_result.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
 
-            # 若想显示模型权重
+            # Show model weights if available
             if hasattr(ensemble_model, "get_model_weights"):
-                with st.expander("查看集成模型权重"):
+                with st.expander("View Ensemble Model Weights"):
                     st.json(ensemble_model.get_model_weights())
 
         except Exception as e:
-            st.error(f"单条预测失败：{e}")
+            st.error(f"Single prediction failed: {e}")
 
 # =========================
-# 批量文件预测
+# Batch file prediction
 # =========================
 with tab2:
-    st.subheader("上传 CSV 或 XLSX 文件进行批量预测")
-    st.write("上传文件中必须包含以下列名，且列名要完全一致：")
+    st.subheader("Upload a CSV or XLSX file for batch prediction")
+    st.write("The uploaded file must contain the following column names exactly:")
     st.code(", ".join(feature_names))
 
     uploaded_file = st.file_uploader(
-        "选择一个 CSV 或 XLSX 文件",
+        "Select a CSV or XLSX file",
         type=["csv", "xlsx"]
     )
 
     if uploaded_file is not None:
         try:
-            # 判断文件类型并读取
+            # Detect file type and read
             if uploaded_file.name.endswith(".csv"):
                 df_uploaded = pd.read_csv(uploaded_file)
             elif uploaded_file.name.endswith(".xlsx"):
                 df_uploaded = pd.read_excel(uploaded_file)
             else:
-                st.error("仅支持 csv 或 xlsx 文件。")
+                st.error("Only csv and xlsx files are supported.")
                 st.stop()
 
-            st.write("### 上传数据预览")
+            st.write("### Uploaded Data Preview")
             st.dataframe(df_uploaded.head())
 
-            # 检查列是否完整
+            # Check required columns
             missing_cols = [col for col in feature_names if col not in df_uploaded.columns]
             if missing_cols:
-                st.error(f"文件缺少必要列：{missing_cols}")
+                st.error(f"The file is missing required columns: {missing_cols}")
             else:
-                if st.button("开始批量预测", type="primary"):
+                if st.button("Start Batch Prediction", type="primary"):
                     result_df, X_scaled = predict_dataframe(
                         df_uploaded, scaler, ensemble_model, feature_names
                     )
 
-                    st.success(f"批量预测完成，共预测 {len(result_df)} 条数据。")
+                    st.success(f"Batch prediction completed successfully. Total records predicted: {len(result_df)}")
 
-                    st.write("### 预测结果预览")
+                    st.write("### Prediction Result Preview")
                     st.dataframe(result_df.head())
 
-                    # 导出为Excel
+                    # Export as Excel
                     excel_data = dataframe_to_excel_bytes(
                         result_df,
                         sheet_name="batch_prediction"
                     )
 
                     st.download_button(
-                        label="下载批量预测结果 Excel",
+                        label="Download Batch Prediction Result Excel",
                         data=excel_data,
                         file_name="batch_prediction_result.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
 
-                    st.info("点击下载后，浏览器会让你选择保存到电脑中的目标路径。")
+                    st.info("After clicking download, your browser will allow you to choose the destination folder on your computer.")
 
         except Exception as e:
-            st.error(f"批量预测失败：{e}")
+            st.error(f"Batch prediction failed: {e}")
