@@ -4,7 +4,6 @@ import numpy as np
 import pandas as pd
 from sklearn.base import BaseEstimator, RegressorMixin
 from io import BytesIO
-import base64
 import os
 
 # =========================
@@ -86,7 +85,6 @@ default_values = [
 def predict_dataframe(df, scaler, model, feature_names):
     """
     对DataFrame进行批量预测
-    要求df至少包含 feature_names 中的所有字段
     """
     missing_cols = [col for col in feature_names if col not in df.columns]
     if missing_cols:
@@ -98,39 +96,17 @@ def predict_dataframe(df, scaler, model, feature_names):
 
     result_df = df.copy()
     result_df["prediction"] = preds
-    return result_df, X_scaled
+    return result_df
 
 def dataframe_to_excel_bytes(df, sheet_name="prediction_result"):
     """
-    将DataFrame转成Excel二进制流，供下载
+    将DataFrame导出为Excel字节流
     """
     output = BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         df.to_excel(writer, index=False, sheet_name=sheet_name)
     output.seek(0)
     return output.getvalue()
-
-def display_pdf(pdf_path, height=700):
-    """
-    在Streamlit中嵌入显示PDF
-    """
-    if not os.path.exists(pdf_path):
-        st.error(f"找不到文件：{pdf_path}")
-        return
-
-    with open(pdf_path, "rb") as f:
-        pdf_bytes = f.read()
-
-    base64_pdf = base64.b64encode(pdf_bytes).decode("utf-8")
-    pdf_display = f"""
-        <iframe
-            src="data:application/pdf;base64,{base64_pdf}"
-            width="100%"
-            height="{height}"
-            type="application/pdf">
-        </iframe>
-    """
-    st.markdown(pdf_display, unsafe_allow_html=True)
 
 def pdf_download_button(pdf_path, button_label):
     """
@@ -146,15 +122,15 @@ def pdf_download_button(pdf_path, button_label):
             mime="application/pdf"
         )
     else:
-        st.warning(f"文件不存在：{pdf_path}")
+        st.warning(f"未找到文件：{pdf_path}")
 
 # =========================
-# Tabs
+# 三个页面
 # =========================
 tab1, tab2, tab3 = st.tabs(["单条预测", "批量文件预测", "模型性能展示"])
 
 # =========================
-# 单条预测
+# 页面1：单条预测
 # =========================
 with tab1:
     st.subheader("请输入单条样本特征值")
@@ -178,12 +154,15 @@ with tab1:
             )
 
             st.write("### 原始输入数据")
-            st.dataframe(X_input)
+            st.dataframe(X_input, use_container_width=True)
 
             X_scaled = scaler.transform(X_input)
 
             st.write("### 标准化后的数据")
-            st.dataframe(pd.DataFrame(X_scaled, columns=feature_names))
+            st.dataframe(
+                pd.DataFrame(X_scaled, columns=feature_names),
+                use_container_width=True
+            )
 
             prediction = ensemble_model.predict(X_scaled)
 
@@ -193,9 +172,8 @@ with tab1:
             st.success(f"预测结果：{prediction[0]:.6f}")
 
             st.write("### 单条预测结果表")
-            st.dataframe(result_single)
+            st.dataframe(result_single, use_container_width=True)
 
-            # 导出 Excel
             try:
                 single_excel = dataframe_to_excel_bytes(
                     result_single,
@@ -208,7 +186,7 @@ with tab1:
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
             except Exception as e:
-                st.warning(f"Excel导出不可用：{e}，请先安装 openpyxl")
+                st.warning(f"Excel导出不可用：{e}。如需导出xlsx，请安装 openpyxl。")
 
             if hasattr(ensemble_model, "get_model_weights"):
                 with st.expander("查看集成模型权重"):
@@ -218,7 +196,7 @@ with tab1:
             st.error(f"单条预测失败：{e}")
 
 # =========================
-# 批量文件预测
+# 页面2：批量文件预测
 # =========================
 with tab2:
     st.subheader("上传 CSV 或 XLSX 文件进行批量预测")
@@ -241,28 +219,27 @@ with tab2:
                 st.stop()
 
             st.write("### 上传数据预览")
-            st.dataframe(df_uploaded.head())
+            st.dataframe(df_uploaded.head(), use_container_width=True)
 
             missing_cols = [col for col in feature_names if col not in df_uploaded.columns]
             if missing_cols:
                 st.error(f"文件缺少必要列：{missing_cols}")
             else:
                 if st.button("开始批量预测", type="primary"):
-                    result_df, X_scaled = predict_dataframe(
+                    result_df = predict_dataframe(
                         df_uploaded, scaler, ensemble_model, feature_names
                     )
 
                     st.success(f"批量预测完成，共预测 {len(result_df)} 条数据。")
 
                     st.write("### 预测结果预览")
-                    st.dataframe(result_df.head())
+                    st.dataframe(result_df.head(), use_container_width=True)
 
                     try:
                         excel_data = dataframe_to_excel_bytes(
                             result_df,
                             sheet_name="batch_prediction"
                         )
-
                         st.download_button(
                             label="下载批量预测结果 Excel",
                             data=excel_data,
@@ -270,7 +247,7 @@ with tab2:
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                         )
                     except Exception as e:
-                        st.warning(f"Excel导出失败：{e}，请先安装 openpyxl")
+                        st.warning(f"Excel导出失败：{e}。如需导出xlsx，请安装 openpyxl。")
 
                     st.info("点击下载后，浏览器会让你选择保存到电脑中的目标路径。")
 
@@ -278,65 +255,73 @@ with tab2:
             st.error(f"批量预测失败：{e}")
 
 # =========================
-# 模型性能展示
+# 页面3：模型性能展示（图片显示）
 # =========================
 with tab3:
     st.subheader("模型性能可视化展示")
 
     st.markdown("""
-    该页面用于展示：
-
-    - **单一模型性能对比结果**
-    - **堆叠/集成模型性能结果**
-    - 对比说明 **堆叠模型整体性能更优**
+    本页面展示：
+    - 单一模型性能对比图
+    - 堆叠模型性能展示图
+    - 结论说明：**堆叠模型性能更优**
     """)
 
-    st.success("结论：从性能对比结果来看，堆叠模型（Ensemble / Stacking）整体表现优于单一模型，具有更好的预测稳定性和精度。")
+    st.success("结论：堆叠模型综合性能优于单一模型，预测精度和稳定性更好。")
 
+    # 图片文件名
+    single_model_img = "single_model.png"
+    ensemble_model_img = "ensemble_model.png"
+
+    # PDF 文件名（可选）
     pdf_single_model = "Six_Models_RealData_Comparison.pdf"
     pdf_ensemble_model = "EnsembleModel.pdf"
 
     st.markdown("---")
     st.markdown("## 1. 单一模型性能对比")
 
-    col1, col2 = st.columns([3, 1])
+    if os.path.exists(single_model_img):
+        st.image(single_model_img, caption="单一模型性能对比图", use_container_width=True)
+    else:
+        st.warning(f"未找到图片文件：{single_model_img}")
+
+    col1, col2 = st.columns([2, 1])
     with col1:
-        display_pdf(pdf_single_model, height=700)
+        st.write("该图展示多个单一模型在真实数据集上的性能表现。")
     with col2:
-        st.write("### 说明")
-        st.write("该 PDF 展示多个单一模型在真实数据上的性能对比。")
-        pdf_download_button(pdf_single_model, "下载单一模型对比 PDF")
+        if os.path.exists(pdf_single_model):
+            pdf_download_button(pdf_single_model, "下载单一模型对比 PDF")
 
     st.markdown("---")
     st.markdown("## 2. 堆叠模型性能展示")
 
-    col3, col4 = st.columns([3, 1])
+    if os.path.exists(ensemble_model_img):
+        st.image(ensemble_model_img, caption="堆叠模型性能展示图", use_container_width=True)
+    else:
+        st.warning(f"未找到图片文件：{ensemble_model_img}")
+
+    col3, col4 = st.columns([2, 1])
     with col3:
-        display_pdf(pdf_ensemble_model, height=700)
+        st.write("该图展示堆叠/集成模型在测试数据上的性能表现。")
     with col4:
-        st.write("### 说明")
-        st.write("该 PDF 展示堆叠/集成模型的预测性能表现。")
-        pdf_download_button(pdf_ensemble_model, "下载堆叠模型 PDF")
+        if os.path.exists(pdf_ensemble_model):
+            pdf_download_button(pdf_ensemble_model, "下载堆叠模型 PDF")
 
     st.markdown("---")
     st.markdown("## 3. 对比结论")
 
     st.info("""
-    **综合结论：**
-    
     与单一模型相比，堆叠模型通过融合多个基学习器的优势，
-    能够有效降低单模型波动带来的影响，提高预测结果的鲁棒性与泛化能力。
-    
-    因此，在当前任务中，**堆叠模型性能更好**。
+    能够提升预测精度，降低单模型波动带来的误差影响，
+    在鲁棒性和泛化能力方面表现更好。
+
+    因此，本系统最终推荐使用：**堆叠模型（Ensemble / Stacking）**。
     """)
 
-    # 可选：简单强调卡片
-    metric_col1, metric_col2, metric_col3 = st.columns(3)
-    with metric_col1:
-        st.metric(label="单一模型", value="基准表现")
-    with metric_col2:
-        st.metric(label="堆叠模型", value="更优表现", delta="性能提升")
-    with metric_col3:
-        st.metric(label="最终推荐", value="堆叠模型")
-
-
+    m1, m2, m3 = st.columns(3)
+    with m1:
+        st.metric("单一模型", "基准表现")
+    with m2:
+        st.metric("堆叠模型", "更优表现", delta="性能提升")
+    with m3:
+        st.metric("推荐模型", "堆叠模型")
