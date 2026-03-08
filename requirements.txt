@@ -8,3 +8,4 @@ scikit-learn==1.5.1
 catboost==1.2.8
 lightgbm==4.3.0
 
+
