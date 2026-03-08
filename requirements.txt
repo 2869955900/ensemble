@@ -6,4 +6,5 @@ matplotlib==3.8.0
 xgboost==2.0.3
 scikit-learn==1.5.1
 catboost==1.2.8
-pywaffle==1.1.1
+lightgbm==4.3.0
+
