@@ -5,10 +5,6 @@ import pandas as pd
 from sklearn.base import BaseEstimator, RegressorMixin
 from io import BytesIO
 
-# =========================
-# Custom ensemble model class
-# Must be defined before joblib.load()
-# =========================
 class EnsembleModel(BaseEstimator, RegressorMixin):
     def __init__(self, models, weights):
         """
@@ -42,12 +38,10 @@ class EnsembleModel(BaseEstimator, RegressorMixin):
     def get_model_weights(self):
         return self.weights_dict
 
-# =========================
-# Page configuration
-# =========================
+
 st.set_page_config(page_title="Online Predictor", page_icon="📈", layout="wide")
-st.title("📈 Streamlit Online Predictor")
-st.write("Supports single prediction and batch prediction (CSV / XLSX). Input data will be standardized before being fed into the ensemble model for prediction.")
+st.title("📈 Predictor SR")
+st.write("Supports single prediction and batch prediction (CSV / XLSX). ")
 
 # =========================
 # Load scaler and model
@@ -241,3 +235,4 @@ with tab2:
 
         except Exception as e:
             st.error(f"Batch prediction failed: {e}")
+
